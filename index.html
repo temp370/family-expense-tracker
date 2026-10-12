@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0f6b4a" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <title>Family Expense Tracker</title>
+    <style>
+      :root{--bg:#f4f6f5;--card:#fff;--tx:#1a2420;--mu:#6b7a74;--bd:#dfe6e3;--g:#12935b;--r:#d6403a;--p:#0f6b4a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+      @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111815;--card:#1b2420;--tx:#e8efec;--mu:#93a39c;--bd:#2c3833;--g:#3ccf91;--r:#ff7b73;--p:#3ccf91}}
+      :root[data-theme="dark"]{--bg:#111815;--card:#1b2420;--tx:#e8efec;--mu:#93a39c;--bd:#2c3833;--g:#3ccf91;--r:#ff7b73;--p:#3ccf91}
+      *{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,"Noto Sans Bengali",sans-serif;padding-bottom:70px}
+      main{max-width:900px;margin:auto;padding:12px}
+      h1{font-size:18px;margin:0}header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;max-width:900px;margin:auto}
+      .badge{font-size:12px;padding:3px 9px;border-radius:99px;background:var(--card);border:1px solid var(--bd)}
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+      .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:12px}
+      .grid .card{margin:0}.l{color:var(--mu);font-size:12px}.v{font-size:20px;font-weight:700}
+      .c{color:var(--g)}.d{color:var(--r)}
+      nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+      nav button{flex:1;border:0;background:none;color:var(--mu);padding:12px 2px;font-size:12px}
+      nav button.on{color:var(--p);font-weight:700}
+      label{display:block;font-size:13px;color:var(--mu);margin:8px 0 3px}
+      input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit}
+      .row{display:flex;gap:8px}.row>*{flex:1}
+      button.b{background:var(--p);color:#fff;border:0;border-radius:10px;padding:10px 14px;font:inherit;cursor:pointer}
+      button.b.s{background:var(--bg);color:var(--tx);border:1px solid var(--bd)}button.b.x{background:var(--r)}button:disabled{opacity:.4}
+      .tx{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--bd)}.tx:last-child{border:0}
+      .bar{height:8px;border-radius:5px;background:var(--bd);overflow:hidden}.bar i{display:block;height:100%;background:var(--r)}
+      .err{color:var(--r);font-size:13px}.seg{display:flex;gap:8px}.seg button{flex:1}
+      .seg .on.cr{background:var(--g);color:#fff}.seg .on.db{background:var(--r);color:#fff}
+      .modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:16px}.modal .card{max-width:420px;width:100%}
+      small{color:var(--mu)}
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>👨‍👩‍👧 Family Expense Tracker</h1>
+      <span class="badge" id="net"></span>
+    </header>
+    <main id="app"></main>
+    <nav id="nav"></nav>
+    <div id="modal"></div>
+
+    <script>
+      const K='fet_v1',CATS={D:['Monthly Expense','Groceries','Rent','Electricity','Water','Internet','Mobile bill','Transportation','Medical','Education','Shopping','Family purchase','Other'],C:['Salary','Bonus','Additional income','Other']};
+      let S={tx:[],del:[]},tab='dash',edit=null,type='D',F={q:'',t:'',c:'',m:''},RM='';
+      try{S=JSON.parse(localStorage.getItem(K))||S}catch(e){}
+      S.del=S.del||[];S.tx.forEach(x=>{x.ver=x.ver||1;x.upd=x.upd||x.created||x.ts});
+      const TZ='Asia/Dhaka';
+      const save=()=>{try{localStorage.setItem(K,JSON.stringify(S));return true}catch(e){alert('Could not save — storage unavailable or full. Nothing was recorded.');return false}};
+      const esc=s=>String(s??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const fmt=p=>'৳'+(p/100).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const dOf=ts=>new Intl.DateTimeFormat('en-CA',{timeZone:TZ}).format(ts);
+      const tOf=ts=>new Intl.DateTimeFormat('en-GB',{timeZone:TZ,hour:'2-digit',minute:'2-digit',hour12:false}).format(ts);
+      const mOf=ts=>dOf(ts).slice(0,7);
+      const toTs=(d,t)=>new Date(d+'T'+t+':00+06:00').getTime();
+      const sum=(a,t)=>a.filter(x=>x.type==t).reduce((s,x)=>s+x.amt,0);
+      const monthTx=m=>S.tx.filter(x=>mOf(x.ts)==m);
+      const curM=()=>mOf(Date.now());
+      const prevM=m=>{let[y,n]=m.split('-').map(Number);n--;if(!n){n=12;y--}return y+'-'+String(n).padStart(2,'0')};
+      const sorted=()=>[...S.tx].sort((a,b)=>b.ts-a.ts);
+      function catBreak(a){const m={};a.filter(x=>x.type=='D').forEach(x=>m[x.cat]=(m[x.cat]||0)+x.amt);const tot=Object.values(m).reduce((a,b)=>a+b,0);
+      return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin:8px 0"><div class="row" style="justify-content:space-between"><span>${esc(k)}</span><span class="d" style="text-align:right">${fmt(v)}</span></div><div class="bar"><i style="width:${v/tot*100}%"></i></div></div>`).join('')||'<small>No expenses.</small>'}
+      function txRow(x,act){return `<div class="tx"><div><b>${esc(x.cat)}</b> <small>${esc(x.desc)}</small><br><small>${dOf(x.ts)} ${tOf(x.ts)}${x.who?' · '+esc(x.who):''}${x.pay?' · '+esc(x.pay):''}</small>${x.notes?`<br><small>📝 ${esc(x.notes)}</small>`:''}</div><div style="text-align:right"><b class="${x.type=='C'?'c':'d'}">${x.type=='C'?'+':'−'}${fmt(x.amt)}</b>${act?`<br><button class="b s" onclick="ed('${x.id}')">Edit</button> <button class="b s" onclick="del('${x.id}')">Delete</button>`:''}</div></div>`}
+      function dash(){const c=sum(S.tx,'C'),d=sum(S.tx,'D'),m=monthTx(curM()),mc=sum(m,'C'),md=sum(m,'D');
+      return `<div class="grid"><div class="card"><div class="l">Total Balance</div><div class="v ${c-d<0?'d':''}">${fmt(c-d)}</div></div><div class="card"><div class="l">Total Credit</div><div class="v c">${fmt(c)}</div></div><div class="card"><div class="l">Total Debit</div><div class="v d">${fmt(d)}</div></div><div class="card"><div class="l">This month income</div><div class="v c">${fmt(mc)}</div></div><div class="card"><div class="l">This month expenses</div><div class="v d">${fmt(md)}</div></div><div class="card"><div class="l">Month remaining</div><div class="v">${fmt(mc-md)}</div></div></div>
+      <div class="card"><b>Category breakdown (this month)</b>${catBreak(m)}</div>
+      <div class="card"><b>Recent transactions</b>${sorted().slice(0,6).map(x=>txRow(x)).join('')||'<br><small>No transactions yet. Tap “Add”.</small>'}</div>
+      ${bkWarn()}<div class="card"><b>Cloud sync:</b> <span class="badge">${stat()}</span> <button class="b s" onclick="syncNow()">Sync now</button></div>`}
+      function form(){const e=edit?S.tx.find(x=>x.id==edit):null;if(e)type=e.type;const n=Date.now(),ts=e?e.ts:n;
+      return `<div class="card"><b>${e?'Edit':'Add'} transaction</b><div class="seg" style="margin-top:8px"><button class="b s cr ${type=='C'?'on':''}" onclick="setT('C')">Credit (income)</button><button class="b s db ${type=='D'?'on':''}" onclick="setT('D')">Debit (expense)</button></div>
+      <label>Amount (৳)</label><input id="a" inputmode="decimal" placeholder="2500" value="${e?e.amt/100:''}">
+      <label>Category</label><select id="c">${CATS[type].map(c=>`<option ${e&&e.cat==c?'selected':''}>${c}</option>`).join('')}</select>
+      <label>${type=='D'?'What did you spend on? (optional, e.g. Rice, oil, vegetables, fish)':'Description (optional)'}</label><textarea id="ds" rows="2">${e?esc(e.desc):''}</textarea>
+      <div class="row"><div><label>Date</label><input type="date" id="d" value="${dOf(ts)}"></div><div><label>Time</label><input type="time" id="t" value="${tOf(ts)}"></div></div>
+      <div class="row"><div><label>Payment method</label><select id="p">${['','Cash','bKash','Nagad','Card','Bank'].map(c=>`<option ${e&&e.pay==c?'selected':''}>${c}</option>`).join('')}</select></div><div><label>Family member</label><input id="w" value="${e?esc(e.who):''}"></div></div>
+      <label>Notes</label><input id="n" value="${e?esc(e.notes):''}"><div class="err" id="er"></div><br>
+      <button class="b" onclick="submitTx()">${e?'Update':'Save'}</button> ${e?'<button class="b s" onclick="edit=null;go(\'hist\')">Cancel</button>':''}</div>`}
+      function setT(t){type=t;render()}
+      function submitTx(){const g=i=>document.getElementById(i).value.trim(),a=Math.round(parseFloat(g('a').replace(/,/g,''))*100),er=document.getElementById('er');
+      if(!(a>0))return er.textContent='Enter an amount greater than 0.';if(!g('d')||!g('t'))return er.textContent='Date and time are required.';
+      const o={type,amt:a,cat:g('c'),desc:g('ds'),ts:toTs(g('d'),g('t')),pay:g('p'),who:g('w'),notes:g('n'),upd:Date.now()};
+      const old=JSON.stringify(S.tx);
+      if(edit){const t0=S.tx.find(x=>x.id==edit);Object.assign(t0,o,{ver:(t0.ver||1)+1})}else S.tx.push({ver:1,id:crypto.randomUUID?crypto.randomUUID():'t'+Date.now()+Math.random().toString(36).slice(2),created:Date.now(),...o});
+      S.dirty=true;if(!save()){S.tx=JSON.parse(old);return}edit=null;go('dash');autoSync()}
+      function ed(id){edit=id;go('add')}
+      function del(id){if(confirm('Delete this transaction? This cannot be undone.')){const t=S.tx.find(x=>x.id==id);S.tx=S.tx.filter(x=>x.id!=id);if(t)S.del.push({...t,del:true,ver:(t.ver||1)+1,upd:Date.now()});S.dirty=true;save();render();autoSync()}}
+      function hist(){let a=sorted().filter(x=>(!F.t||x.type==F.t)&&(!F.c||x.cat==F.c)&&(!F.m||mOf(x.ts)==F.m)&&(!F.q||(x.desc+x.cat+x.notes+x.who).toLowerCase().includes(F.q.toLowerCase())));
+      const all=[...new Set([...CATS.D,...CATS.C])];
+      return `<div class="card"><input placeholder="Search…" value="${esc(F.q)}" oninput="F.q=this.value;rl()"><div class="row" style="margin-top:8px"><select onchange="F.t=this.value;render()"><option value="">All types</option><option value="C" ${F.t=='C'?'selected':''}>Credit</option><option value="D" ${F.t=='D'?'selected':''}>Debit</option></select><select onchange="F.c=this.value;render()"><option value="">All categories</option>${all.map(c=>`<option ${F.c==c?'selected':''}>${c}</option>`).join('')}</select><input type="month" value="${F.m}" onchange="F.m=this.value;render()"></div></div>
+      <div class="card" id="hl"><b>${a.length} transaction(s)</b>${a.map(x=>txRow(x,1)).join('')}</div>`}
+      function rl(){const el=document.getElementById('hl');if(el)el.outerHTML=hist().split('<div class="card" id="hl">')[1]?'<div class="card" id="hl">'+hist().split('<div class="card" id="hl">')[1]:''}
+      function reports(){const m=RM||curM(),p=prevM(m),a=monthTx(m),b=monthTx(p),ex=sum(a,'D'),pe=sum(b,'D'),df=ex-pe;
+      return `<div class="card"><label>Month</label><input type="month" value="${m}" onchange="RM=this.value;render()">
+      <div class="grid" style="margin-top:10px"><div><div class="l">Income</div><div class="v c">${fmt(sum(a,'C'))}</div></div><div><div class="l">Expenses</div><div class="v d">${fmt(ex)}</div></div><div><div class="l">Remaining</div><div class="v">${fmt(sum(a,'C')-ex)}</div></div></div>
+      <small>vs ${p}: expenses ${df>0?'up':'down'} ${fmt(Math.abs(df))} (${pe?Math.round(df/pe*100)+'%':'no data last month'})</small></div>
+      <div class="card"><b>Category-wise spending</b>${catBreak(a)}</div>
+      <div class="card"><button class="b" onclick="csv('${m}')">Download ${m} CSV</button><br><br><b>Transactions</b>${[...a].sort((x,y)=>y.ts-x.ts).map(x=>txRow(x)).join('')||'<br><small>No transactions this month.</small>'}</div>`}
+      const q=v=>{v=String(v??'');if(/^[=+\-@]/.test(v)&&isNaN(v))v="'"+v;return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+      function csv(m){let run=0,rows=[...S.tx].sort((a,b)=>a.ts-b.ts).map(x=>{run+=x.type=='C'?x.amt:-x.amt;return{x,run}});
+      if(m)rows=rows.filter(r=>mOf(r.x.ts)==m);if(!rows.length)return alert('No transactions to export.');
+      const out=[['Transaction ID','Date','Time','Type','Category','Description','Amount','Balance','Notes'].join(',')].concat(rows.map(({x,run})=>[x.id,dOf(x.ts),tOf(x.ts),x.type=='C'?'Credit':'Debit',x.cat,x.desc,(x.amt/100).toFixed(2),(run/100).toFixed(2),x.notes].map(q).join(',')));
+      dl('\ufeff'+out.join('\r\n'),'Family_Expenses_'+(m||dOf(Date.now()).slice(0,7))+'.csv','text/csv;charset=utf-8')}
+      function dl(t,n,ty){const u=URL.createObjectURL(new Blob([t],{type:ty})),a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
+      function settings(){return `<div class="card"><b>Guest Mode</b><br><small>No login. Everything is stored only in this browser on this device; nothing is sent to any server. Clearing browser data, uninstalling, or losing the device destroys it unless you export a backup.</small></div>
+      <div class="card"><b>Export / Backup</b><br><br><button class="b" onclick="csv()">Download all (CSV)</button> <button class="b s" onclick="bkp()">Save backup file (CSV)</button><br><small>${S.bk?'Last backup saved: '+new Date(S.bk).toLocaleString('en-GB',{timeZone:TZ}):'No backup file saved yet.'} The file goes to your phone’s Downloads folder. You can upload it to Google Drive by hand.</small><br><br><label>Restore from a backup CSV made by this app (duplicates skipped)</label><input type="file" accept=".csv" onchange="impCsv(this)"><br><br><label>Restore / merge from JSON backup (duplicates skipped)</label><input type="file" accept=".json" onchange="imp(this)"></div>
+      ${driveCard()}
+      <div class="card"><b class="d">Reset Data</b><br><small>Deletes all Guest Mode transactions on this device.</small><br><br><button class="b x" onclick="rst()">Reset Data…</button></div>`}
+      function imp(el){const f=el.files[0];if(!f)return;f.text().then(t=>{try{const j=JSON.parse(t),ids=new Set(S.tx.map(x=>x.id));let n=0;(j.tx||[]).forEach(x=>{if(x&&x.id&&x.ts&&x.amt>0&&!ids.has(x.id)){S.tx.push(x);ids.add(x.id);n++}});save();alert(n+' new transaction(s) imported.');render()}catch(e){alert('Invalid backup file.')}})}
+      function rst(){document.getElementById('modal').innerHTML=`<div class="modal"><div class="card"><b class="d">Reset Guest Mode data?</b><p>This permanently deletes all ${S.tx.length} transaction(s) on this device. Backup files you saved earlier are not deleted.</p><button class="b s" onclick="csv()">Export CSV first</button><label>Type CONFIRM to continue</label><input id="cf" oninput="document.getElementById('go').disabled=this.value!=='CONFIRM'" autocomplete="off"><br><br><div class="row"><button class="b s" onclick="mc()">Cancel</button><button class="b x" id="go" disabled onclick="doReset()">Delete everything</button></div></div></div>`}
+      const mc=()=>document.getElementById('modal').innerHTML='';
+      function doReset(){if(document.getElementById('cf').value!=='CONFIRM')return;if(!confirm('Final confirmation: delete ALL data now?'))return;S={tx:[],del:[]};localStorage.removeItem(DK);DR={};if(save()){mc();go('dash');alert('Guest Mode data has been reset.')}}
+      const tabs=[['dash','🏠','Home'],['add','➕','Add'],['hist','📋','History'],['rep','📊','Reports'],['set','⚙️','Settings']];
+      function go(t){tab=t;if(t!='add')edit=null;render();scrollTo(0,0)}
+      function render(){document.getElementById('nav').innerHTML=tabs.map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="go('${k}')">${i}<br>${l}</button>`).join('');
+      document.getElementById('app').innerHTML={dash,add:form,hist,rep:reports,set:settings}[tab]()}
+      const CID='PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com',SC='https://www.googleapis.com/auth/drive.file',FN='Family_Expense_Tracker.csv',DK='fet_drive';
+      let DR={};try{DR=JSON.parse(localStorage.getItem(DK))||{}}catch(e){}
+      let tok=null,tokExp=0,busy=false,serr='',needAuth=false;
+      const sd=()=>{try{localStorage.setItem(DK,JSON.stringify(DR))}catch(e){}},noCid=()=>CID.startsWith('PASTE');
+      function stat(){if(!DR.linked)return'Local only (not connected)';if(busy)return'Syncing…';if(!navigator.onLine)return'Offline'+(S.dirty?' · changes pending':'');if(needAuth)return'Authorization required';if(serr)return'Error: '+serr;if(S.dirty)return'Pending';return'Synced '+(DR.last?new Date(DR.last).toLocaleString('en-GB',{timeZone:TZ}):'')}
+      function driveCard(){const h='<div class="card"><b>Google Drive sync</b><br>';
+      if(noCid())return h+'<small class="d">Not set up yet: paste your Google OAuth Client ID into index.html (see README-SETUP.md). Until then the app works locally only.</small></div>';
+      if(!DR.linked)return h+'<small>Sign in with Google to keep ONE backup file ('+FN+') in your own Drive. The app can only see files it created. Your Google password is never shared with this app.</small><br><br><button class="b" onclick="connect()">Connect Google Drive</button></div>';
+      return h+'<span class="badge">'+esc(stat())+'</span><br><small>File: '+FN+'. Syncs after each save, when the app opens and when internet returns. It cannot sync while the app is closed.</small><br><br><button class="b" onclick="sync(true)">Sync now</button> '+(needAuth?'<button class="b s" onclick="sync(true)">Reconnect</button> ':'')+'<button class="b s" onclick="disc()">Disconnect</button></div>'}
+      const H=['Transaction ID','Date','Time','Type','Category','Description','Amount','Balance','Notes','Payment Method','Family Member','Timestamp','Created','Updated','Version','Deleted'];
+      function syncCsv(all){let run=0;const bal={};all.filter(x=>!x.del).sort((a,b)=>a.ts-b.ts).forEach(x=>{run+=x.type=='C'?x.amt:-x.amt;bal[x.id]=run});
+      return '\ufeff'+[H.join(',')].concat([...all].sort((a,b)=>a.ts-b.ts).map(x=>[x.id,dOf(x.ts),tOf(x.ts),x.type=='C'?'Credit':'Debit',x.cat,x.desc,(x.amt/100).toFixed(2),x.del?'':(bal[x.id]/100).toFixed(2),x.notes,x.pay,x.who,x.ts,x.created||x.ts,x.upd,x.ver||1,x.del?1:0].map(q).join(','))).join('\r\n')}
+      function pcsv(t){const o=[];let r=[],f='',z=false;t=t.replace(/^\ufeff/,'');for(let i=0;i<t.length;i++){const c=t[i];if(z){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else z=false}else f+=c}else if(c=='"')z=true;else if(c==','){r.push(f);f=''}else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;r.push(f);o.push(r);r=[];f=''}else f+=c}if(f||r.length){r.push(f);o.push(r)}return o}
+      function fromCsv(t){const rows=pcsv(t).filter(r=>r.length>1),h=rows.shift()||[],ix=n=>h.indexOf(n);if(ix('Version')<0)throw new Error('not a tracker backup file');
+      return rows.map(r=>{const g=n=>(r[ix(n)]??'').replace(/^'(?=[=+\-@])/,'');return{id:g('Transaction ID'),type:g('Type')=='Credit'?'C':'D',amt:Math.round(parseFloat(g('Amount'))*100),cat:g('Category'),desc:g('Description'),notes:g('Notes'),pay:g('Payment Method'),who:g('Family Member'),ts:+g('Timestamp'),created:+g('Created'),upd:+g('Updated'),ver:+g('Version')||1,del:g('Deleted')=='1'}}).filter(x=>x.id&&x.ts&&x.amt>0)}
+      function mrg(L,R){const m=new Map(L.map(x=>[x.id,x]));for(const r of R){const l=m.get(r.id);if(!l||r.ver>l.ver)m.set(r.id,r);else if(r.ver==l.ver&&(r.upd!=l.upd||!!r.del!=!!l.del||r.amt!=l.amt||r.desc!=l.desc||r.cat!=l.cat)){const w=r.upd>l.upd?r:l;m.set(r.id,{...w,ver:l.ver+1,upd:Date.now()})}}return[...m.values()]}
+      function loadGis(){return new Promise((ok,no)=>{if(window.google&&google.accounts)return ok();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=ok;s.onerror=()=>no(new Error('google unavailable'));document.head.appendChild(s)})}
+      async function getTok(i){if(tok&&Date.now()<tokExp-60000)return;await loadGis();return new Promise((ok,no)=>{google.accounts.oauth2.initTokenClient({client_id:CID,scope:SC,callback:r=>{if(r.error)return no(new Error(r.error));tok=r.access_token;tokExp=Date.now()+r.expires_in*1000;needAuth=false;ok()},error_callback:e=>no(new Error(e.type||'closed'))}).requestAccessToken({prompt:i?'':'none'})})}
+      async function api(u,o={}){const r=await fetch(u,{...o,headers:{...(o.headers||{}),Authorization:'Bearer '+tok}});if(r.status==401){tok=null;needAuth=true;throw new Error('auth')}if(!r.ok){const e=new Error('Drive error '+r.status);e.status=r.status;throw e}return r}
+      async function create(){const b='b'+Date.now(),body='--'+b+'\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify({name:FN,mimeType:'text/csv'})+'\r\n--'+b+'\r\nContent-Type: text/csv\r\n\r\n'+H.join(',')+'\r\n--'+b+'--';
+      return(await(await api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body})).json()).id}
+      async function sync(i){if(!DR.linked||busy||noCid())return;if(!navigator.onLine){render();return}busy=true;serr='';render();
+      try{try{await getTok(i)}catch(e){needAuth=true;throw new Error('auth')}
+      if(!DR.fileId){const l=(await(await api('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime%20desc&q='+encodeURIComponent("name='"+FN+"' and trashed=false"))).json()).files||[];
+      if(l.length&&confirm('An existing backup was found in your Drive (changed '+new Date(l[0].modifiedTime).toLocaleString('en-GB',{timeZone:TZ})+'). OK = use it and merge with this device. Cancel = create a new file.'))DR.fileId=l[0].id;else DR.fileId=await create();sd()}
+      let remote=[];
+      try{remote=fromCsv(await(await api('https://www.googleapis.com/drive/v3/files/'+DR.fileId+'?alt=media')).text())}catch(e){if(e.status==404){if(confirm('The backup file is missing from Drive. Create a new one from this device’s data?')){DR.fileId=await create();sd()}else{DR={};sd();throw new Error('backup file missing')}}else throw e}
+      const m=mrg(S.tx.concat(S.del),remote),rm=new Map(remote.map(x=>[x.id,x]));
+      if(m.some(x=>{const r=rm.get(x.id);return!r||x.ver>r.ver}))await api('https://www.googleapis.com/upload/drive/v3/files/'+DR.fileId+'?uploadType=media',{method:'PATCH',headers:{'Content-Type':'text/csv;charset=utf-8'},body:syncCsv(m)});
+      S.tx=m.filter(x=>!x.del);S.del=m.filter(x=>x.del);S.dirty=false;DR.last=Date.now();sd();save()
+      }catch(e){if(e.message!='auth')serr=String(e.message).slice(0,70)}
+      busy=false;render()}
+      async function connect(){if(noCid())return;DR={linked:true};sd();await sync(true);if(!DR.fileId){DR={};sd();render()}}
+      function disc(){if(!confirm('Disconnect Google Drive? Data stays on this device and the file stays in your Drive.'))return;try{if(tok)google.accounts.oauth2.revoke(tok)}catch(e){}tok=null;DR={};sd();render()}
+      const syncNow=()=>DR.linked?sync(true):go('set'),autoSync=()=>{if(DR.linked)sync(false)};
+      addEventListener('online',()=>{net();autoSync()});addEventListener('offline',()=>render());
+      function bkp(){if(!S.tx.length&&!S.del.length)return alert('Nothing to back up yet.');dl(syncCsv(S.tx.concat(S.del)),'Family_Expense_Tracker_Backup_'+dOf(Date.now())+'.csv','text/csv;charset=utf-8');S.bk=Date.now();save();render()}
+      function bkWarn(){if(!S.tx.length||(S.bk&&Date.now()-S.bk<7*864e5))return'';return'<div class="card"><b>⚠️ Back up your data</b><br><small>'+(S.bk?'Last backup was more than 7 days ago.':'You have not saved a backup file yet.')+' Phone data can be lost if browser data is cleared.</small><br><br><button class="b" onclick="bkp()">Save backup file now</button></div>'}
+      function impCsv(el){const f=el.files[0];if(!f)return;f.text().then(t=>{try{const r=fromCsv(t);if(!r.length)return alert('No transactions found in this file.');const before=S.tx.length+S.del.length,m=mrg(S.tx.concat(S.del),r);S.tx=m.filter(x=>!x.del);S.del=m.filter(x=>x.del);S.dirty=true;save();alert((m.length-before)+' new entries added (duplicates skipped).');render();autoSync()}catch(e){alert('This is not a backup file made by this app. (Use “Save backup file”, not “Download all”.)')}})}
+      const net=()=>{const e=document.getElementById('net');e.textContent=navigator.onLine?'● Online':'○ Offline';e.style.color=navigator.onLine?'var(--g)':'var(--r)'};
+      addEventListener('online',net);addEventListener('offline',net);net();render();if(DR.linked)setTimeout(()=>sync(false),600);if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    </script>
+  </body>
+</html>

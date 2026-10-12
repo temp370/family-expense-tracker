@@ -1,0 +1,27 @@
+# Ignore local-only and sensitive files
+
+# Local env and secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.crt
+
+# Backups and exported personal data
+*.csv
+*.xlsx
+*.xls
+*.json
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+
+# Local cache
+.cache/
