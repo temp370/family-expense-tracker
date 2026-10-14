@@ -48,8 +48,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
       const K='fet_v1';
-      const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
-      const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+      const SUPABASE_URL = 'https://nxxeruyoahdelyymvjck.supabase.co';
+      const SUPABASE_ANON_KEY = 'sb_publishable_CS_FFUGDydhyPaU4UC7zsA_c8hlo0oE';
       let supabase = null;
       const supabaseReady = () => !(SUPABASE_URL.includes('YOUR_') || SUPABASE_ANON_KEY.includes('YOUR_'));
       if (supabaseReady() && window.supabase) {
@@ -125,154 +125,22 @@
       if(m)rows=rows.filter(r=>mOf(r.x.ts)==m);if(!rows.length)return alert('No transactions to export.');
       const out=[['Transaction ID','Date','Time','Type','Category','Description','Amount','Balance','Notes'].join(',')].concat(rows.map(({x,run})=>[x.id,dOf(x.ts),tOf(x.ts),x.type=='C'?'Credit':'Debit',x.cat,x.desc,(x.amt/100).toFixed(2),(run/100).toFixed(2),x.notes].map(q).join(',')));
       dl('\ufeff'+out.join('\r\n'),'Family_Expenses_'+(m||dOf(Date.now()).slice(0,7))+'.csv','text/csv;charset=utf-8')}
+      // shareBackup: create CSV and open native share sheet on mobile, fallback to download
+      async function shareBackup(filename){
+        try{
+          const csvText = syncCsv(S.tx.concat(S.del));
+          const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+          const name = filename || 'Family_Expense_'+(dOf(Date.Now()).slice(0,7))+'.csv';
+          const file = new File([blob], name, { type: 'text/csv' });
+          if(navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share){
+            await navigator.share({ files: [file], title: 'Family Expense Backup', text: 'Family Expense Tracker backup CSV' });
+            return;
+          }
+        }catch(e){console.warn('Share API failed or not supported', e);} 
+        // fallback
+        dl('\ufeff'+syncCsv(S.tx.concat(S.del)), filename||'Family_Expenses_'+dOf(Date.Now()).slice(0,7)+'.csv','text/csv;charset=utf-8');
+      }
       function dl(t,n,ty){const u=URL.createObjectURL(new Blob([t],{type:ty})),a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
       function settings(){return `<div class="card"><b>Guest Mode</b><br><small>No login. Everything is stored only in this browser on this device; nothing is sent to any server. Clearing browser data, uninstalling, or losing the device destroys it unless you export a backup.</small></div>
       <div class="card"><b>Auth / Identity</b><br><small>Use Google sign-in for cloud access. If you are not signed in, the app stays in guest mode.</small><br><br>${renderAuthUi()}</div>
-      <div class="card"><b>Export / Backup</b><br><br><button class="b" onclick="csv()">Download all (CSV)</button> <button class="b s" onclick="bkp()">Save backup file (CSV)</button><br><small>${S.bk?'Last backup saved: '+new Date(S.bk).toLocaleString('en-GB',{timeZone:TZ}):'No backup file saved yet.'} The file goes to your phone’s Downloads folder. You can upload it to Google Drive by hand.</small><br><br><label>Restore from a backup CSV made by this app (duplicates skipped)</label><input type="file" accept=".csv" onchange="impCsv(this)"><br><br><label>Restore / merge from JSON backup (duplicates skipped)</label><input type="file" accept=".json" onchange="imp(this)"></div>
-      ${driveCard()}
-      <div class="card"><b class="d">Reset Data</b><br><small>Deletes all Guest Mode transactions on this device.</small><br><br><button class="b x" onclick="rst()">Reset Data…</button></div>`}
-      function renderAuthUi(){
-        if (!supabaseReady()) return '<small>Supabase not configured yet. Replace the placeholder values in index.html before enabling Google login.</small>';
-        if (appState.user) return `<button class="b" onclick="signOutFromSupabase()">Sign out</button> <small>Signed in as ${esc(appState.user.email || 'Google user')}</small>`;
-        return '<button class="b" onclick="signInWithGoogle()">Continue with Google</button>';
-      }
-      async function signInWithGoogle(){
-        if (!supabase || !supabaseReady()) {
-          alert('Supabase is not configured yet. Set SUPABASE_URL and SUPABASE_ANON_KEY in index.html.');
-          return;
-        }
-        const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-        if (error) alert(error.message);
-      }
-      async function signOutFromSupabase(){
-        if (!supabase) return;
-        await supabase.auth.signOut();
-        appState.user = null;
-        appState.mode = 'guest';
-        render();
-      }
-      async function maybeSaveCloud(){
-        if (!supabase || !appState.user || !supabaseReady()) return;
-        const payloads = S.tx.map(x => ({
-          id: x.id,
-          user_id: appState.user.id,
-          type: x.type,
-          category: x.cat,
-          desc: x.desc,
-          amt: x.amt,
-          ts: x.ts,
-          pay_method: x.pay,
-          who: x.who,
-          notes: x.notes,
-          created_at: new Date(x.created || x.ts).toISOString(),
-          updated_at: new Date(x.upd || Date.now()).toISOString()
-        }));
-        const { error } = await supabase.from('expenses').upsert(payloads, { onConflict: 'id' });
-        if (error) console.error('Cloud save failed', error);
-      }
-      async function loadCloudData(){
-        if (!supabase || !appState.user || !supabaseReady()) return;
-        const { data, error } = await supabase.from('expenses').select('*').eq('user_id', appState.user.id).order('ts',{ascending:false});
-        if (error) { console.error(error); return; }
-        const cloud = data.map(r => ({
-          id: r.id,
-          type: r.type,
-          amt: r.amt,
-          cat: r.category,
-          desc: r.desc,
-          ts: r.ts,
-          pay: r.pay_method,
-          who: r.who,
-          notes: r.notes,
-          created: new Date(r.created_at).getTime(),
-          upd: new Date(r.updated_at).getTime()
-        }));
-        if (cloud.length) {
-          S.tx = cloud;
-          save();
-        }
-      }
-      async function mergeLocalToCloud(){
-        if (!supabase || !appState.user || !supabaseReady()) return;
-        const raw = JSON.parse(localStorage.getItem(K) || '{"tx":[]}');
-        const local = raw.tx || [];
-        if (!local.length) return;
-        const payloads = local.map(x => ({
-          id: x.id,
-          user_id: appState.user.id,
-          type: x.type,
-          category: x.cat,
-          desc: x.desc,
-          amt: x.amt,
-          ts: x.ts,
-          pay_method: x.pay,
-          who: x.who,
-          notes: x.notes,
-          created_at: new Date(x.created || x.ts).toISOString(),
-          updated_at: new Date(x.upd || Date.now()).toISOString()
-        }));
-        await supabase.from('expenses').upsert(payloads, { onConflict: 'id' });
-      }
-      function imp(el){const f=el.files[0];if(!f)return;f.text().then(t=>{try{const j=JSON.parse(t),ids=new Set(S.tx.map(x=>x.id));let n=0;(j.tx||[]).forEach(x=>{if(x&&x.id&&x.ts&&x.amt>0&&!ids.has(x.id)){S.tx.push(x);ids.add(x.id);n++}});save();alert(n+' new transaction(s) imported.');render();autoSync();maybeSaveCloud()}catch(e){alert('Invalid backup file.')}})}
-      function rst(){document.getElementById('modal').innerHTML=`<div class="modal"><div class="card"><b class="d">Reset Guest Mode data?</b><p>This permanently deletes all ${S.tx.length} transaction(s) on this device. Backup files you saved earlier are not deleted.</p><button class="b s" onclick="csv()">Export CSV first</button><label>Type CONFIRM to continue</label><input id="cf" oninput="document.getElementById('go').disabled=this.value!=='CONFIRM'" autocomplete="off"><br><br><div class="row"><button class="b s" onclick="mc()">Cancel</button><button class="b x" id="go" disabled onclick="doReset()">Delete everything</button></div></div></div>`}
-      const mc=()=>document.getElementById('modal').innerHTML='';
-      function doReset(){if(document.getElementById('cf').value!=='CONFIRM')return;if(!confirm('Final confirmation: delete ALL data now?'))return;S={tx:[],del:[]};localStorage.removeItem(K);if(save()){mc();go('dash');alert('Guest Mode data has been reset.')}}
-      const tabs=[['dash','🏠','Home'],['add','➕','Add'],['hist','📋','History'],['rep','📊','Reports'],['set','⚙️','Settings']];
-      function go(t){tab=t;if(t!='add')edit=null;render();scrollTo(0,0)}
-      function render(){document.getElementById('nav').innerHTML=tabs.map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="go('${k}')">${i}<br>${l}</button>`).join('');
-      document.getElementById('app').innerHTML={dash,add:form,hist,rep:reports,set:settings}[tab]()}
-      const CID='PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com',SC='https://www.googleapis.com/auth/drive.file',FN='Family_Expense_Tracker.csv',DK='fet_drive';
-      let DR={};try{DR=JSON.parse(localStorage.getItem(DK))||{}}catch(e){}
-      let tok=null,tokExp=0,busy=false,serr='',needAuth=false;
-      const sd=()=>{try{localStorage.setItem(DK,JSON.stringify(DR))}catch(e){}},noCid=()=>CID.startsWith('PASTE');
-      function stat(){if(!DR.linked)return'Local only (not connected)';if(busy)return'Syncing…';if(!navigator.onLine)return'Offline'+(S.dirty?' · changes pending':'');if(needAuth)return'Authorization required';if(serr)return'Error: '+serr;if(S.dirty)return'Pending';return'Synced '+(DR.last?new Date(DR.last).toLocaleString('en-GB',{timeZone:TZ}):'')}
-      function driveCard(){const h='<div class="card"><b>Google Drive sync</b><br>';
-      if(noCid())return h+'<small class="d">Not set up yet: paste your Google OAuth Client ID into index.html (see README-SETUP.md). Until then the app works locally only.</small></div>';
-      if(!DR.linked)return h+'<small>Sign in with Google to keep ONE backup file ('+FN+') in your own Drive. The app can only see files it created. Your Google password is never shared with this app.</small><br><br><button class="b" onclick="connect()">Connect Google Drive</button></div>';
-      return h+'<span class="badge">'+esc(stat())+'</span><br><small>File: '+FN+'. Syncs after each save, when the app opens and when internet returns. It cannot sync while the app is closed.</small><br><br><button class="b" onclick="sync(true)">Sync now</button> '+(needAuth?'<button class="b s" onclick="sync(true)">Reconnect</button> ':'')+'<button class="b s" onclick="disc()">Disconnect</button></div>'}
-      const H=['Transaction ID','Date','Time','Type','Category','Description','Amount','Balance','Notes','Payment Method','Family Member','Timestamp','Created','Updated','Version','Deleted'];
-      function syncCsv(all){let run=0;const bal={};all.filter(x=>!x.del).sort((a,b)=>a.ts-b.ts).forEach(x=>{run+=x.type=='C'?x.amt:-x.amt;bal[x.id]=run});
-      return '\ufeff'+[H.join(',')].concat([...all].sort((a,b)=>a.ts-b.ts).map(x=>[x.id,dOf(x.ts),tOf(x.ts),x.type=='C'?'Credit':'Debit',x.cat,x.desc,(x.amt/100).toFixed(2),x.del?'':(bal[x.id]/100).toFixed(2),x.notes,x.pay,x.who,x.ts,x.created||x.ts,x.upd,x.ver||1,x.del?1:0].map(q).join(','))).join('\r\n')}
-      function pcsv(t){const o=[];let r=[],f='',z=false;t=t.replace(/^\ufeff/,'');for(let i=0;i<t.length;i++){const c=t[i];if(z){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else z=false}else f+=c}else if(c=='"')z=true;else if(c==','){r.push(f);f=''}else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;r.push(f);o.push(r);r=[];f=''}else f+=c}if(f||r.length){r.push(f);o.push(r)}return o}
-      function fromCsv(t){const rows=pcsv(t).filter(r=>r.length>1),h=rows.shift()||[],ix=n=>h.indexOf(n);if(ix('Version')<0)throw new Error('not a tracker backup file');
-      return rows.map(r=>{const g=n=>(r[ix(n)]??'').replace(/^'(?=[=+\-@])/,'');return{id:g('Transaction ID'),type:g('Type')=='Credit'?'C':'D',amt:Math.round(parseFloat(g('Amount'))*100),cat:g('Category'),desc:g('Description'),notes:g('Notes'),pay:g('Payment Method'),who:g('Family Member'),ts:+g('Timestamp'),created:+g('Created'),upd:+g('Updated'),ver:+g('Version')||1,del:g('Deleted')=='1'}}).filter(x=>x.id&&x.ts&&x.amt>0)}
-      function mrg(L,R){const m=new Map(L.map(x=>[x.id,x]));for(const r of R){const l=m.get(r.id);if(!l||r.ver>l.ver)m.set(r.id,r);else if(r.ver==l.ver&&(r.upd!=l.upd||!!r.del!=!!l.del||r.amt!=l.amt||r.desc!=l.desc||r.cat!=l.cat)){const w=r.upd>l.upd?r:l;m.set(r.id,{...w,ver:l.ver+1,upd:Date.now()})}}return[...m.values()]}
-      function loadGis(){return new Promise((ok,no)=>{if(window.google&&google.accounts)return ok();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=ok;s.onerror=()=>no(new Error('google unavailable'));document.head.appendChild(s)})}
-      async function getTok(i){if(tok&&Date.now()<tokExp-60000)return;await loadGis();return new Promise((ok,no)=>{google.accounts.oauth2.initTokenClient({client_id:CID,scope:SC,callback:r=>{if(r.error)return no(new Error(r.error));tok=r.access_token;tokExp=Date.now()+r.expires_in*1000;needAuth=false;ok()},error_callback:e=>no(new Error(e.type||'closed'))}).requestAccessToken({prompt:i?'':'none'})})}
-      async function api(u,o={}){const r=await fetch(u,{...o,headers:{...(o.headers||{}),Authorization:'Bearer '+tok}});if(r.status==401){tok=null;needAuth=true;throw new Error('auth')}if(!r.ok){const e=new Error('Drive error '+r.status);e.status=r.status;throw e}return r}
-      async function create(){const b='b'+Date.now(),body='--'+b+'\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify({name:FN,mimeType:'text/csv'})+'\r\n--'+b+'\r\nContent-Type: text/csv\r\n\r\n'+H.join(',')+'\r\n--'+b+'--';
-      return(await(await api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body})).json()).id}
-      async function sync(i){if(!DR.linked||busy||noCid())return;if(!navigator.onLine){render();return}busy=true;serr='';render();
-      try{try{await getTok(i)}catch(e){needAuth=true;throw new Error('auth')}
-      if(!DR.fileId){const l=(await(await api('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime%20desc&q='+encodeURIComponent("name='"+FN+"' and trashed=false"))).json()).files||[];
-      if(l.length&&confirm('An existing backup was found in your Drive (changed '+new Date(l[0].modifiedTime).toLocaleString('en-GB',{timeZone:TZ})+'). OK = use it and merge with this device. Cancel = create a new file.'))DR.fileId=l[0].id;else DR.fileId=await create();sd()}
-      let remote=[];
-      try{remote=fromCsv(await(await api('https://www.googleapis.com/drive/v3/files/'+DR.fileId+'?alt=media')).text())}catch(e){if(e.status==404){if(confirm('The backup file is missing from Drive. Create a new one from this device’s data?')){DR.fileId=await create();sd()}else{DR={};sd();throw new Error('backup file missing')}}else throw e}
-      const m=mrg(S.tx.concat(S.del),remote),rm=new Map(remote.map(x=>[x.id,x]));
-      if(m.some(x=>{const r=rm.get(x.id);return!r||x.ver>r.ver}))await api('https://www.googleapis.com/upload/drive/v3/files/'+DR.fileId+'?uploadType=media',{method:'PATCH',headers:{'Content-Type':'text/csv;charset=utf-8'},body:syncCsv(m)});
-      S.tx=m.filter(x=>!x.del);S.del=m.filter(x=>x.del);S.dirty=false;DR.last=Date.now();sd();save()
-      }catch(e){if(e.message!='auth')serr=String(e.message).slice(0,70)}
-      busy=false;render()}
-      async function connect(){if(noCid())return;DR={linked:true};sd();await sync(true);if(!DR.fileId){DR={};sd();render()}}
-      function disc(){if(!confirm('Disconnect Google Drive? Data stays on this device and the file stays in your Drive.'))return;try{if(tok)google.accounts.oauth2.revoke(tok)}catch(e){}tok=null;DR={};sd();render()}
-      const syncNow=()=>DR.linked?sync(true):go('set'),autoSync=()=>{if(DR.linked)sync(false)};
-      addEventListener('online',()=>{net();autoSync()});addEventListener('offline',()=>render());
-      function bkp(){if(!S.tx.length&&!S.del.length)return alert('Nothing to back up yet.');dl(syncCsv(S.tx.concat(S.del)),'Family_Expense_Tracker_Backup_'+dOf(Date.now())+'.csv','text/csv;charset=utf-8');S.bk=Date.now();save();render()}
-      function bkWarn(){if(!S.tx.length||(S.bk&&Date.now()-S.bk<7*864e5))return'';return'<div class="card"><b>⚠️ Back up your data</b><br><small>'+(S.bk?'Last backup was more than 7 days ago.':'You have not saved a backup file yet.')+' Phone data can be lost if browser data is cleared.</small><br><br><button class="b" onclick="bkp()">Save backup file now</button></div>'}
-      const net=()=>{const e=document.getElementById('net');e.textContent=navigator.onLine?'● Online':'○ Offline';e.style.color=navigator.onLine?'var(--g)':'var(--r)'};
-      addEventListener('online',net);addEventListener('offline',net);net();render();if(DR.linked)setTimeout(()=>sync(false),600);if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
-
-      if (supabaseReady() && supabase) {
-        supabase.auth.onAuthStateChange(async (event, session) => {
-          appState.user = session?.user || null;
-          appState.mode = appState.user ? 'cloud' : 'guest';
-          if (appState.user) {
-            await mergeLocalToCloud();
-            await loadCloudData();
-          }
-          render();
-        });
-      }
-    </script>
-  </body>
-</html>
+      <div class="card"><b>Export / Backup</b><br><br><button class="b" onclick="shareBackup('Family_Expenses_'+(new Date()).toISOString().slice(0,10)+'.csv')">Share / Upload backup</button> <button class="b" onclick="csv()">Download all (CSV)</button> <button class="b s" onclick="bkp()">Save backup file (CSV)</button><br><small>${S.bk?'Last backup saved: '+new Date(S.bk).toLocaleString('en-GB',{timeZone:TZ}):'No backup file saved yet.'} The file goes to your phone’s Downloads folder. You can upload it to Google Drive by hand.</small><br><br><label>Restore from a backup CSV made by this app (duplicates skipped)</label><input type=
