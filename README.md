@@ -1,6 +1,6 @@
 # Family Expense Tracker
 
-A private, local-first personal expense tracker for a family budget. It stores data in the browser (localStorage) and can optionally sync with Google Drive using a Google OAuth Client ID.
+A private, local-first personal expense tracker for a family budget. It stores data in the browser and can optionally use Supabase for user accounts, Google OAuth, and cloud sync.
 
 ## Project structure
 
@@ -8,32 +8,48 @@ A private, local-first personal expense tracker for a family budget. It stores d
 - `manifest.webmanifest` – PWA manifest
 - `sw.js` – service worker for offline caching
 - `icon.svg` – app icon (SVG for reliable browser support)
-- `README-SETUP.md` – setup guide for Google Drive sync and GitHub Pages
+- `README-SETUP.md` – GitHub Pages setup
+- `SUPABASE-SETUP.md` – Supabase + Google OAuth setup
 - `.gitignore` – hides local secrets and backup files
 
-## Security note
+## Important privacy rule
 
-This app is intentionally designed to keep sensitive data local to the browser. Do not place real credentials, secret spreadsheet files, or private Excel exports inside the GitHub repository.
+Do not store secrets in the GitHub repository.
 
-For production/private use:
+Never commit:
 
-- keep the GitHub repo private
-- store sensitive data only in a backend or private environment
-- use environment variables or secret stores for any API keys
-- never commit `.env`, `.csv`, `.json` backups, or Excel files
+- `.env`
+- `.json` backups with private data
+- `.csv` exports with real records
+- Excel/spreadsheet files
+- API keys or OAuth secrets
 
-## Local use
+This app supports two modes:
 
-Open `index.html` directly in the browser or deploy via GitHub Pages.
+1. Guest/local mode
+   - data stays in the browser localStorage
+   - good for personal, offline use
+2. Cloud-authenticated mode
+   - uses Supabase Auth + Google OAuth
+   - data is stored in Supabase database and protected by user-specific RLS policies
 
 ## Deploy to GitHub Pages
 
 1. Push this repo to GitHub
-2. Go to `Settings -> Pages`
-3. Choose source: `Deploy from a branch`
-4. Branch: `main` and folder: `/root`
-5. Save and wait for deployment
+2. Open `Settings -> Pages`
+3. Choose `Deploy from a branch`
+4. Branch: `main`, folder: `/root`
+5. Save
 
-## Optional Google Drive sync
+## Supabase setup
 
-See `README-SETUP.md` for setup steps.
+See `SUPABASE-SETUP.md` for the exact steps to enable:
+
+- Google login
+- user signup/login
+- cloud expense sync
+- secure per-user access control
+
+## Local use
+
+Open `index.html` directly in a browser, or deploy via GitHub Pages.

@@ -45,9 +45,22 @@
     <nav id="nav"></nav>
     <div id="modal"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-      const K='fet_v1',CATS={D:['Monthly Expense','Groceries','Rent','Electricity','Water','Internet','Mobile bill','Transportation','Medical','Education','Shopping','Family purchase','Other'],C:['Salary','Bonus','Additional income','Other']};
+      const K='fet_v1';
+      const SUPABASE_URL = 'https://YOUR_PROJECT_REF.supabase.co';
+      const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+      let supabase = null;
+      const supabaseReady = () => !(SUPABASE_URL.includes('YOUR_') || SUPABASE_ANON_KEY.includes('YOUR_'));
+      if (supabaseReady() && window.supabase) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        });
+      }
+
+      const CATS={D:['Monthly Expense','Groceries','Rent','Electricity','Water','Internet','Mobile bill','Transportation','Medical','Education','Shopping','Family purchase','Other'],C:['Salary','Bonus','Additional income','Other']};
       let S={tx:[],del:[]},tab='dash',edit=null,type='D',F={q:'',t:'',c:'',m:''},RM='';
+      const appState = { user: null, mode: 'guest', cloudReady: supabaseReady() };
       try{S=JSON.parse(localStorage.getItem(K))||S}catch(e){}
       S.del=S.del||[];S.tx.forEach(x=>{x.ver=x.ver||1;x.upd=x.upd||x.created||x.ts});
       const TZ='Asia/Dhaka';
@@ -63,6 +76,13 @@
       const curM=()=>mOf(Date.now());
       const prevM=m=>{let[y,n]=m.split('-').map(Number);n--;if(!n){n=12;y--}return y+'-'+String(n).padStart(2,'0')};
       const sorted=()=>[...S.tx].sort((a,b)=>b.ts-a.ts);
+
+      function addCloudStatusChip() {
+        if (!appState.cloudReady) return '<div class="card"><b>Cloud auth:</b> <small>Supabase not configured yet. Replace the placeholder values in index.html.</small></div>';
+        if (!appState.user) return '<div class="card"><b>Cloud auth:</b> <small>Not signed in. Use the Google login button.</small></div>';
+        return `<div class="card"><b>Cloud auth:</b> <span class="badge">Signed in as ${esc(appState.user.email || 'user')}</span></div>`;
+      }
+
       function catBreak(a){const m={};a.filter(x=>x.type=='D').forEach(x=>m[x.cat]=(m[x.cat]||0)+x.amt);const tot=Object.values(m).reduce((a,b)=>a+b,0);
       return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin:8px 0"><div class="row" style="justify-content:space-between"><span>${esc(k)}</span><span class="d" style="text-align:right">${fmt(v)}</span></div><div class="bar"><i style="width:${v/tot*100}%"></i></div></div>`).join('')||'<small>No expenses.</small>'}
       function txRow(x,act){return `<div class="tx"><div><b>${esc(x.cat)}</b> <small>${esc(x.desc)}</small><br><small>${dOf(x.ts)} ${tOf(x.ts)}${x.who?' · '+esc(x.who):''}${x.pay?' · '+esc(x.pay):''}</small>${x.notes?`<br><small>📝 ${esc(x.notes)}</small>`:''}</div><div style="text-align:right"><b class="${x.type=='C'?'c':'d'}">${x.type=='C'?'+':'−'}${fmt(x.amt)}</b>${act?`<br><button class="b s" onclick="ed('${x.id}')">Edit</button> <button class="b s" onclick="del('${x.id}')">Delete</button>`:''}</div></div>`}
@@ -70,7 +90,7 @@
       return `<div class="grid"><div class="card"><div class="l">Total Balance</div><div class="v ${c-d<0?'d':''}">${fmt(c-d)}</div></div><div class="card"><div class="l">Total Credit</div><div class="v c">${fmt(c)}</div></div><div class="card"><div class="l">Total Debit</div><div class="v d">${fmt(d)}</div></div><div class="card"><div class="l">This month income</div><div class="v c">${fmt(mc)}</div></div><div class="card"><div class="l">This month expenses</div><div class="v d">${fmt(md)}</div></div><div class="card"><div class="l">Month remaining</div><div class="v">${fmt(mc-md)}</div></div></div>
       <div class="card"><b>Category breakdown (this month)</b>${catBreak(m)}</div>
       <div class="card"><b>Recent transactions</b>${sorted().slice(0,6).map(x=>txRow(x)).join('')||'<br><small>No transactions yet. Tap “Add”.</small>'}</div>
-      ${bkWarn()}<div class="card"><b>Cloud sync:</b> <span class="badge">${stat()}</span> <button class="b s" onclick="syncNow()">Sync now</button></div>`}
+      ${bkWarn()}${addCloudStatusChip()}`}
       function form(){const e=edit?S.tx.find(x=>x.id==edit):null;if(e)type=e.type;const n=Date.now(),ts=e?e.ts:n;
       return `<div class="card"><b>${e?'Edit':'Add'} transaction</b><div class="seg" style="margin-top:8px"><button class="b s cr ${type=='C'?'on':''}" onclick="setT('C')">Credit (income)</button><button class="b s db ${type=='D'?'on':''}" onclick="setT('D')">Debit (expense)</button></div>
       <label>Amount (৳)</label><input id="a" inputmode="decimal" placeholder="2500" value="${e?e.amt/100:''}">
@@ -86,9 +106,9 @@
       const o={type,amt:a,cat:g('c'),desc:g('ds'),ts:toTs(g('d'),g('t')),pay:g('p'),who:g('w'),notes:g('n'),upd:Date.now()};
       const old=JSON.stringify(S.tx);
       if(edit){const t0=S.tx.find(x=>x.id==edit);Object.assign(t0,o,{ver:(t0.ver||1)+1})}else S.tx.push({ver:1,id:crypto.randomUUID?crypto.randomUUID():'t'+Date.now()+Math.random().toString(36).slice(2),created:Date.now(),...o});
-      S.dirty=true;if(!save()){S.tx=JSON.parse(old);return}edit=null;go('dash');autoSync()}
+      S.dirty=true;if(!save()){S.tx=JSON.parse(old);return}edit=null;go('dash');autoSync();maybeSaveCloud();}
       function ed(id){edit=id;go('add')}
-      function del(id){if(confirm('Delete this transaction? This cannot be undone.')){const t=S.tx.find(x=>x.id==id);S.tx=S.tx.filter(x=>x.id!=id);if(t)S.del.push({...t,del:true,ver:(t.ver||1)+1,upd:Date.now()});S.dirty=true;save();render();autoSync()}}
+      function del(id){if(confirm('Delete this transaction? This cannot be undone.')){const t=S.tx.find(x=>x.id==id);S.tx=S.tx.filter(x=>x.id!=id);if(t)S.del.push({...t,del:true,ver:(t.ver||1)+1,upd:Date.now()});S.dirty=true;save();render();autoSync();maybeSaveCloud()}}
       function hist(){let a=sorted().filter(x=>(!F.t||x.type==F.t)&&(!F.c||x.cat==F.c)&&(!F.m||mOf(x.ts)==F.m)&&(!F.q||(x.desc+x.cat+x.notes+x.who).toLowerCase().includes(F.q.toLowerCase())));
       const all=[...new Set([...CATS.D,...CATS.C])];
       return `<div class="card"><input placeholder="Search…" value="${esc(F.q)}" oninput="F.q=this.value;rl()"><div class="row" style="margin-top:8px"><select onchange="F.t=this.value;render()"><option value="">All types</option><option value="C" ${F.t=='C'?'selected':''}>Credit</option><option value="D" ${F.t=='D'?'selected':''}>Debit</option></select><select onchange="F.c=this.value;render()"><option value="">All categories</option>${all.map(c=>`<option ${F.c==c?'selected':''}>${c}</option>`).join('')}</select><input type="month" value="${F.m}" onchange="F.m=this.value;render()"></div></div>
@@ -107,13 +127,96 @@
       dl('\ufeff'+out.join('\r\n'),'Family_Expenses_'+(m||dOf(Date.now()).slice(0,7))+'.csv','text/csv;charset=utf-8')}
       function dl(t,n,ty){const u=URL.createObjectURL(new Blob([t],{type:ty})),a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),2000)}
       function settings(){return `<div class="card"><b>Guest Mode</b><br><small>No login. Everything is stored only in this browser on this device; nothing is sent to any server. Clearing browser data, uninstalling, or losing the device destroys it unless you export a backup.</small></div>
+      <div class="card"><b>Auth / Identity</b><br><small>Use Google sign-in for cloud access. If you are not signed in, the app stays in guest mode.</small><br><br>${renderAuthUi()}</div>
       <div class="card"><b>Export / Backup</b><br><br><button class="b" onclick="csv()">Download all (CSV)</button> <button class="b s" onclick="bkp()">Save backup file (CSV)</button><br><small>${S.bk?'Last backup saved: '+new Date(S.bk).toLocaleString('en-GB',{timeZone:TZ}):'No backup file saved yet.'} The file goes to your phone’s Downloads folder. You can upload it to Google Drive by hand.</small><br><br><label>Restore from a backup CSV made by this app (duplicates skipped)</label><input type="file" accept=".csv" onchange="impCsv(this)"><br><br><label>Restore / merge from JSON backup (duplicates skipped)</label><input type="file" accept=".json" onchange="imp(this)"></div>
       ${driveCard()}
       <div class="card"><b class="d">Reset Data</b><br><small>Deletes all Guest Mode transactions on this device.</small><br><br><button class="b x" onclick="rst()">Reset Data…</button></div>`}
-      function imp(el){const f=el.files[0];if(!f)return;f.text().then(t=>{try{const j=JSON.parse(t),ids=new Set(S.tx.map(x=>x.id));let n=0;(j.tx||[]).forEach(x=>{if(x&&x.id&&x.ts&&x.amt>0&&!ids.has(x.id)){S.tx.push(x);ids.add(x.id);n++}});save();alert(n+' new transaction(s) imported.');render()}catch(e){alert('Invalid backup file.')}})}
+      function renderAuthUi(){
+        if (!supabaseReady()) return '<small>Supabase not configured yet. Replace the placeholder values in index.html before enabling Google login.</small>';
+        if (appState.user) return `<button class="b" onclick="signOutFromSupabase()">Sign out</button> <small>Signed in as ${esc(appState.user.email || 'Google user')}</small>`;
+        return '<button class="b" onclick="signInWithGoogle()">Continue with Google</button>';
+      }
+      async function signInWithGoogle(){
+        if (!supabase || !supabaseReady()) {
+          alert('Supabase is not configured yet. Set SUPABASE_URL and SUPABASE_ANON_KEY in index.html.');
+          return;
+        }
+        const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+        if (error) alert(error.message);
+      }
+      async function signOutFromSupabase(){
+        if (!supabase) return;
+        await supabase.auth.signOut();
+        appState.user = null;
+        appState.mode = 'guest';
+        render();
+      }
+      async function maybeSaveCloud(){
+        if (!supabase || !appState.user || !supabaseReady()) return;
+        const payloads = S.tx.map(x => ({
+          id: x.id,
+          user_id: appState.user.id,
+          type: x.type,
+          category: x.cat,
+          desc: x.desc,
+          amt: x.amt,
+          ts: x.ts,
+          pay_method: x.pay,
+          who: x.who,
+          notes: x.notes,
+          created_at: new Date(x.created || x.ts).toISOString(),
+          updated_at: new Date(x.upd || Date.now()).toISOString()
+        }));
+        const { error } = await supabase.from('expenses').upsert(payloads, { onConflict: 'id' });
+        if (error) console.error('Cloud save failed', error);
+      }
+      async function loadCloudData(){
+        if (!supabase || !appState.user || !supabaseReady()) return;
+        const { data, error } = await supabase.from('expenses').select('*').eq('user_id', appState.user.id).order('ts',{ascending:false});
+        if (error) { console.error(error); return; }
+        const cloud = data.map(r => ({
+          id: r.id,
+          type: r.type,
+          amt: r.amt,
+          cat: r.category,
+          desc: r.desc,
+          ts: r.ts,
+          pay: r.pay_method,
+          who: r.who,
+          notes: r.notes,
+          created: new Date(r.created_at).getTime(),
+          upd: new Date(r.updated_at).getTime()
+        }));
+        if (cloud.length) {
+          S.tx = cloud;
+          save();
+        }
+      }
+      async function mergeLocalToCloud(){
+        if (!supabase || !appState.user || !supabaseReady()) return;
+        const raw = JSON.parse(localStorage.getItem(K) || '{"tx":[]}');
+        const local = raw.tx || [];
+        if (!local.length) return;
+        const payloads = local.map(x => ({
+          id: x.id,
+          user_id: appState.user.id,
+          type: x.type,
+          category: x.cat,
+          desc: x.desc,
+          amt: x.amt,
+          ts: x.ts,
+          pay_method: x.pay,
+          who: x.who,
+          notes: x.notes,
+          created_at: new Date(x.created || x.ts).toISOString(),
+          updated_at: new Date(x.upd || Date.now()).toISOString()
+        }));
+        await supabase.from('expenses').upsert(payloads, { onConflict: 'id' });
+      }
+      function imp(el){const f=el.files[0];if(!f)return;f.text().then(t=>{try{const j=JSON.parse(t),ids=new Set(S.tx.map(x=>x.id));let n=0;(j.tx||[]).forEach(x=>{if(x&&x.id&&x.ts&&x.amt>0&&!ids.has(x.id)){S.tx.push(x);ids.add(x.id);n++}});save();alert(n+' new transaction(s) imported.');render();autoSync();maybeSaveCloud()}catch(e){alert('Invalid backup file.')}})}
       function rst(){document.getElementById('modal').innerHTML=`<div class="modal"><div class="card"><b class="d">Reset Guest Mode data?</b><p>This permanently deletes all ${S.tx.length} transaction(s) on this device. Backup files you saved earlier are not deleted.</p><button class="b s" onclick="csv()">Export CSV first</button><label>Type CONFIRM to continue</label><input id="cf" oninput="document.getElementById('go').disabled=this.value!=='CONFIRM'" autocomplete="off"><br><br><div class="row"><button class="b s" onclick="mc()">Cancel</button><button class="b x" id="go" disabled onclick="doReset()">Delete everything</button></div></div></div>`}
       const mc=()=>document.getElementById('modal').innerHTML='';
-      function doReset(){if(document.getElementById('cf').value!=='CONFIRM')return;if(!confirm('Final confirmation: delete ALL data now?'))return;S={tx:[],del:[]};localStorage.removeItem(DK);DR={};if(save()){mc();go('dash');alert('Guest Mode data has been reset.')}}
+      function doReset(){if(document.getElementById('cf').value!=='CONFIRM')return;if(!confirm('Final confirmation: delete ALL data now?'))return;S={tx:[],del:[]};localStorage.removeItem(K);if(save()){mc();go('dash');alert('Guest Mode data has been reset.')}}
       const tabs=[['dash','🏠','Home'],['add','➕','Add'],['hist','📋','History'],['rep','📊','Reports'],['set','⚙️','Settings']];
       function go(t){tab=t;if(t!='add')edit=null;render();scrollTo(0,0)}
       function render(){document.getElementById('nav').innerHTML=tabs.map(([k,i,l])=>`<button class="${tab==k?'on':''}" onclick="go('${k}')">${i}<br>${l}</button>`).join('');
@@ -156,9 +259,20 @@
       addEventListener('online',()=>{net();autoSync()});addEventListener('offline',()=>render());
       function bkp(){if(!S.tx.length&&!S.del.length)return alert('Nothing to back up yet.');dl(syncCsv(S.tx.concat(S.del)),'Family_Expense_Tracker_Backup_'+dOf(Date.now())+'.csv','text/csv;charset=utf-8');S.bk=Date.now();save();render()}
       function bkWarn(){if(!S.tx.length||(S.bk&&Date.now()-S.bk<7*864e5))return'';return'<div class="card"><b>⚠️ Back up your data</b><br><small>'+(S.bk?'Last backup was more than 7 days ago.':'You have not saved a backup file yet.')+' Phone data can be lost if browser data is cleared.</small><br><br><button class="b" onclick="bkp()">Save backup file now</button></div>'}
-      function impCsv(el){const f=el.files[0];if(!f)return;f.text().then(t=>{try{const r=fromCsv(t);if(!r.length)return alert('No transactions found in this file.');const before=S.tx.length+S.del.length,m=mrg(S.tx.concat(S.del),r);S.tx=m.filter(x=>!x.del);S.del=m.filter(x=>x.del);S.dirty=true;save();alert((m.length-before)+' new entries added (duplicates skipped).');render();autoSync()}catch(e){alert('This is not a backup file made by this app. (Use “Save backup file”, not “Download all”.)')}})}
       const net=()=>{const e=document.getElementById('net');e.textContent=navigator.onLine?'● Online':'○ Offline';e.style.color=navigator.onLine?'var(--g)':'var(--r)'};
       addEventListener('online',net);addEventListener('offline',net);net();render();if(DR.linked)setTimeout(()=>sync(false),600);if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+
+      if (supabaseReady() && supabase) {
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          appState.user = session?.user || null;
+          appState.mode = appState.user ? 'cloud' : 'guest';
+          if (appState.user) {
+            await mergeLocalToCloud();
+            await loadCloudData();
+          }
+          render();
+        });
+      }
     </script>
   </body>
 </html>
